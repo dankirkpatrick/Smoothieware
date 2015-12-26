@@ -28,6 +28,7 @@
 #include "StepTicker.h"
 
 // strategies we know about
+#include "DCDeltaCalibrationStrategy.h"
 #include "DeltaCalibrationStrategy.h"
 #include "ThreePointStrategy.h"
 #include "ZGridStrategy.h"
@@ -85,6 +86,11 @@ void ZProbe::on_config_reload(void *argument)
             bool found= false;
             // check with each known strategy and load it if it matches
             switch(cs) {
+                case dc_delta_calibration_strategy_checksum:
+                    this->strategies.push_back(new DCDeltaCalibrationStrategy(this));
+                    found= true;
+                    break;
+
                 case delta_calibration_strategy_checksum:
                     this->strategies.push_back(new DeltaCalibrationStrategy(this));
                     found= true;
