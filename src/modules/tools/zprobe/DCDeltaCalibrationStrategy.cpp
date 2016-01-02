@@ -324,19 +324,19 @@ bool DCDeltaCalibrationStrategy::calibrate(int num_factors, int sample_count, fl
         }
         stream->printf("Before RMS Error: %.3f", sqrtf(sumOfSquares));
         
-        trimx -= solution[i];
-        trimy -= solution[i];
-        trimz -= solution[i];
+        trimx -= solution[0];
+        trimy -= solution[1];
+        trimz -= solution[2];
         if (!set_trim(trimx, trimy, trimz, stream)) {
             return false;
         }
         if (num_factors > 3) {
-            options['R'] += solution[i];
+            options['R'] += solution[3];
             if (num_factors > 4) {
-                options['D'] += solution[i];
-                options['E'] += solution[i];
+                options['D'] += solution[4];
+                options['E'] += solution[5];
                 if (num_factors > 6) {
-                    options['L'] += solution[i];
+                    options['L'] += solution[6];
                 }
             }
             THEKERNEL->robot->arm_solution->set_optional(options);
@@ -352,7 +352,7 @@ bool DCDeltaCalibrationStrategy::calibrate(int num_factors, int sample_count, fl
             actuator_mm[2] = all_actuator_mm[i][2] - trimz;
             THEKERNEL->robot->arm_solution->actuator_to_cartesian(actuator_mm, cartesian_mm);
             residuals[i] = cartesian_mm[2];
-            corrections[i] = catresian_mm[2] - probe_heights[i];
+            corrections[i] = cartesian_mm[2] - probe_heights[i];
             sumOfSquares += residuals[i] * residuals[i];
             THEKERNEL->call_event(ON_IDLE);
         }
