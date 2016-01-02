@@ -142,7 +142,7 @@ bool DCDeltaCalibrationStrategy::calibrate(int num_factors, int sample_count, fl
     if (!keep) {
         // zero trim values
         if (!set_trim(0, 0, 0, stream)) return false;
-        stream->printf("Current Trim X: %.3f, Y: %.3f, Z: %.3f\r\n", trimx, trimy, trimz);
+        stream->printf("Current Trim X: %.3f, Y: %.3f, Z: %.3f\n", trimx, trimy, trimz);
 
         options['A'] = 0;
         options['B'] = 0;
@@ -154,20 +154,20 @@ bool DCDeltaCalibrationStrategy::calibrate(int num_factors, int sample_count, fl
     } else {
         // get current trim, and continue from that
         if (get_trim(trimx, trimy, trimz)) {
-            stream->printf("Current Trim X: %.3f, Y: %.3f, Z: %.3f\r\n", trimx, trimy, trimz);
+            stream->printf("Current Trim X: %.3f, Y: %.3f, Z: %.3f\n", trimx, trimy, trimz);
         } else {
             stream->printf("Could not get current trim, are endstops enabled?\n");
             return false;
         }
     }
     if (THEKERNEL->robot->arm_solution->get_optional(options)) {
-        stream->printf("    Rod length: %.3f", options['R']);
-        stream->printf("  Delta radius: %.3f", options['L']);
-        stream->printf("Tower A radius: %.3f", options['L'] + options['A']);
+        stream->printf("    Rod length: %.3f", options['L']);
+        stream->printf("  Delta radius: %.3f", options['R']);
+        stream->printf("Tower A radius: %.3f", options['R'] + options['A']);
         stream->printf("Tower A  angle: %.3f", 210 + options['D']);
-        stream->printf("Tower B radius: %.3f", options['L'] + options['B']);
+        stream->printf("Tower B radius: %.3f", options['R'] + options['B']);
         stream->printf("Tower B  angle: %.3f", 330 + options['E']);
-        stream->printf("Tower C radius: %.3f", options['L'] + options['C']);
+        stream->printf("Tower C radius: %.3f", options['R'] + options['C']);
         stream->printf("Tower C  angle: %.3f", 90 + options['F']);
     }
 
@@ -197,7 +197,7 @@ bool DCDeltaCalibrationStrategy::calibrate(int num_factors, int sample_count, fl
     std::vector<float> tempInit(num_factors, 0);
     std::vector<std::vector<float>> derivative_matrix(sample_count, tempInit);
     
-    // The normal matrix for each factor
+    // The normal matrix for each factor: N x N+1 
     std::vector<float> tempInit2(num_factors+1, 0);
     std::vector<std::vector<float>> normal_matrix(num_factors, tempInit2);
     
@@ -219,7 +219,7 @@ bool DCDeltaCalibrationStrategy::calibrate(int num_factors, int sample_count, fl
         }
         
         // Debug
-        stream->printf("Derivative Matrix:\r\n");
+        stream->printf("Derivative Matrix:\n");
         for (int i = 0; i < sample_count; i++) {
             for (int j = 0; j < num_factors; j++) {
                 if (j == 0) {
@@ -229,7 +229,7 @@ bool DCDeltaCalibrationStrategy::calibrate(int num_factors, int sample_count, fl
                 }
                 stream->printf("%.3f", derivative_matrix[i][j]);
             }
-            stream->printf("]\r\n");
+            stream->printf("]\n");
         }
         
         // Build normal matrix from derivatives
@@ -249,7 +249,7 @@ bool DCDeltaCalibrationStrategy::calibrate(int num_factors, int sample_count, fl
         }
         
         // Debug
-        stream->printf("Normal matrix:\r\n");
+        stream->printf("Normal matrix:\n");
         for (int i = 0; i < num_factors; i++) {
             for (int j = 0; j <= num_factors; j++) {
                 if (j == 0) {
@@ -259,7 +259,7 @@ bool DCDeltaCalibrationStrategy::calibrate(int num_factors, int sample_count, fl
                 }
                 stream->printf("%.3f", normal_matrix[i][j]);
             }
-            stream->printf("]\r\n");
+            stream->printf("]\n");
         }
         
         // Solve using Gauss-Jordan
@@ -296,7 +296,7 @@ bool DCDeltaCalibrationStrategy::calibrate(int num_factors, int sample_count, fl
         }
         
         // Debug
-        stream->printf("Solution:\r\n");
+        stream->printf("Solution:\n");
         for (int i = 0; i < num_factors; i++) {
             if (i == 0) {
                 stream->printf("[");
@@ -305,7 +305,7 @@ bool DCDeltaCalibrationStrategy::calibrate(int num_factors, int sample_count, fl
             }
             stream->printf("%.3f", solution[i]);
         }
-        stream->printf("]\r\n");
+        stream->printf("]\n");
         
         // compute residuals
         float sumOfSquares = 0;
@@ -331,7 +331,7 @@ bool DCDeltaCalibrationStrategy::calibrate(int num_factors, int sample_count, fl
                     trimz += solution[i];
                     break;
                 case 3:
-                    options['L'] += solution[i];
+                    options['R'] += solution[i];
                     break;
                 case 4:
                     options['D'] += solution[i] * PIOVER180;
@@ -340,7 +340,7 @@ bool DCDeltaCalibrationStrategy::calibrate(int num_factors, int sample_count, fl
                     options['E'] += solution[i] * PIOVER180;
                     break;
                 case 6:
-                    options['R'] += solution[i];
+                    options['L'] += solution[i];
                     break;
             }
             if (!set_trim(trimx, trimy, trimz, stream)) return false;
@@ -466,32 +466,29 @@ float DCDeltaCalibrationStrategy::compute_derivative(int factor, float cartesian
     } else if (factor < 7) {
         // perturb option
         char option = '-';
-        float optionPerturb = 0.2;
         switch (factor) {
             case 3:
-                option = 'L'; // Delta radius adjustment
+                option = 'R'; // Delta radius adjustment
                 break;
             case 4:
                 option = 'D'; // Angle adjustment for tower A
-                optionPerturb = optionPerturb * PIOVER180;
                 break;
             case 5:
                 option = 'E'; // Angle adjustment for tower B
-                optionPerturb = optionPerturb * PIOVER180;
                 break;
             case 6:
-                option = 'R'; // Rod length adjustment
+                option = 'L'; // Rod length adjustment
                 break;
         }
         if (THEKERNEL->robot->arm_solution->get_optional(options)) {
             original = options[option];
             
-            options[option] = original + optionPerturb; 
+            options[option] = original + perturb; 
             THEKERNEL->robot->arm_solution->set_optional(options);
             THEKERNEL->robot->arm_solution->actuator_to_cartesian(actuator_mm, cartesian_mm);
             zHi = cartesian_mm[2];
             
-            options[option] = original - optionPerturb; 
+            options[option] = original - perturb; 
             THEKERNEL->robot->arm_solution->set_optional(options);
             THEKERNEL->robot->arm_solution->actuator_to_cartesian(actuator_mm, cartesian_mm);
             zLo = cartesian_mm[2];
