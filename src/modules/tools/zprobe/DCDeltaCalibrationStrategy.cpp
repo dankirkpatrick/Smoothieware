@@ -183,6 +183,7 @@ bool DCDeltaCalibrationStrategy::calibrate(int num_factors, int sample_count, fl
         all_actuator_mm[i][0] = actuator_mm[0];
         all_actuator_mm[i][1] = actuator_mm[1];
         all_actuator_mm[i][2] = actuator_mm[2];
+        THEKERNEL->call_event(ON_IDLE);
     }
 
     // The amount of Z height, at each probe point, changed by the solution 
@@ -191,6 +192,7 @@ bool DCDeltaCalibrationStrategy::calibrate(int num_factors, int sample_count, fl
     float initialSumOfSquares = 0;
     for (int i = 0; i < sample_count; i++) {
         initialSumOfSquares += (probe_heights[i] * probe_heights[i]);
+        THEKERNEL->call_event(ON_IDLE);
     }
     
     // The derivative of height change for each point wrt each factor
@@ -216,6 +218,7 @@ bool DCDeltaCalibrationStrategy::calibrate(int num_factors, int sample_count, fl
             for (int j = 0; j < num_factors; j++) {
                 derivative_matrix[i][j] = compute_derivative(j, cartesian_mm, actuator_mm);
             }
+            THEKERNEL->call_event(ON_IDLE);
         }
         
         // Debug
@@ -230,6 +233,7 @@ bool DCDeltaCalibrationStrategy::calibrate(int num_factors, int sample_count, fl
                 stream->printf("%.3f", derivative_matrix[i][j]);
             }
             stream->printf("]\n");
+            THEKERNEL->call_event(ON_IDLE);
         }
         
         // Build normal matrix from derivatives
@@ -261,6 +265,7 @@ bool DCDeltaCalibrationStrategy::calibrate(int num_factors, int sample_count, fl
             }
             stream->printf("]\n");
         }
+        THEKERNEL->call_event(ON_IDLE);
         
         // Solve using Gauss-Jordan
         for (int i = 0; i < num_factors; i++) {
@@ -290,6 +295,7 @@ bool DCDeltaCalibrationStrategy::calibrate(int num_factors, int sample_count, fl
                 }
             }
         }
+        THEKERNEL->call_event(ON_IDLE);
         
         for (int i = 0; i < num_factors; i++) {
             solution[i] = normal_matrix[i][num_factors] / normal_matrix[i][i];
@@ -318,45 +324,37 @@ bool DCDeltaCalibrationStrategy::calibrate(int num_factors, int sample_count, fl
         }
         stream->printf("Before RMS Error: %.3f", sqrtf(sumOfSquares));
         
-        // apply solution
-        for (int i = 0; i < num_factors; i++) {
-            switch (i) {
-                case 0:
-                    trimx += solution[i];
-                    break;
-                case 1:
-                    trimy += solution[i];
-                    break;
-                case 2:
-                    trimz += solution[i];
-                    break;
-                case 3:
-                    options['R'] += solution[i];
-                    break;
-                case 4:
-                    options['D'] += solution[i] * PIOVER180;
-                    break;
-                case 5:
-                    options['E'] += solution[i] * PIOVER180;
-                    break;
-                case 6:
+        trimx -= solution[i];
+        trimy -= solution[i];
+        trimz -= solution[i];
+        if (!set_trim(trimx, trimy, trimz, stream)) {
+            return false;
+        }
+        if (num_factors > 3) {
+            options['R'] += solution[i];
+            if (num_factors > 4) {
+                options['D'] += solution[i];
+                options['E'] += solution[i];
+                if (num_factors > 6) {
                     options['L'] += solution[i];
-                    break;
+                }
             }
-            if (!set_trim(trimx, trimy, trimz, stream)) return false;
             THEKERNEL->robot->arm_solution->set_optional(options);
-        }        
-        
+        } 
+        stream->printf("X: %.4f, Y: %.4f, Z: %.4f, R: %.4f, D: %.4f, E: %.4f, F: 0.000, L: %.4f\r\n", trimx, trimy, trimz, options['R'], options['D'], options['E'], options['L']);
+        THEKERNEL->call_event(ON_IDLE);
+                
         // compute expected residuals
         sumOfSquares = 0;
         for (int i = 0; i < sample_count; i++) {
-            actuator_mm[0] = all_actuator_mm[i][0] + trimx;
-            actuator_mm[1] = all_actuator_mm[i][1] + trimy;
-            actuator_mm[2] = all_actuator_mm[i][2] + trimz;
+            actuator_mm[0] = all_actuator_mm[i][0] - trimx;
+            actuator_mm[1] = all_actuator_mm[i][1] - trimy;
+            actuator_mm[2] = all_actuator_mm[i][2] - trimz;
             THEKERNEL->robot->arm_solution->actuator_to_cartesian(actuator_mm, cartesian_mm);
-            corrections[i] = cartesian_mm[2];
-            residuals[i] = probe_heights[i] + cartesian_mm[2];
+            residuals[i] = cartesian_mm[2];
+            corrections[i] = catresian_mm[2] - probe_heights[i];
             sumOfSquares += residuals[i] * residuals[i];
+            THEKERNEL->call_event(ON_IDLE);
         }
         stream->printf("Expected After RMS Error: %.3f", sqrtf(sumOfSquares));
     }
@@ -454,11 +452,11 @@ float DCDeltaCalibrationStrategy::compute_derivative(int factor, float cartesian
         // perturb endstops
         original = actuator_mm[factor];
         // DSK: TODO: check that this works--it's opposite the DeltaSim
-        actuator_mm[factor] = original - perturb; // endstop offsets have inverted effects
+        actuator_mm[factor] = original + perturb; // endstop offsets have inverted effects
         THEKERNEL->robot->arm_solution->actuator_to_cartesian(actuator_mm, cartesian_mm);
         zHi = cartesian_mm[2];
         
-        actuator_mm[factor] = original + perturb; // endstop offsets have inverted effects
+        actuator_mm[factor] = original - perturb; // endstop offsets have inverted effects
         THEKERNEL->robot->arm_solution->actuator_to_cartesian(actuator_mm, cartesian_mm);
         zLo = cartesian_mm[2];
         
