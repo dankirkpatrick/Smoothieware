@@ -21,6 +21,7 @@ private:
     bool get_trim(float &x, float &y, float &z);
     float compute_derivative(int factor, float cartesian_mm[], std::array<float,3> actuator_mm);
     void get_probe_point(int sample_number, float cartesian_mm[], int sample_count, float probe_radius);
+    float findBed();
     bool probe_bed(int sample_count, float probe_radius, std::vector<float> probe_heights, StreamOutput* stream);
     bool calibrate(Gcode* gcode);
     bool calibrate(int numFactors, int sample_count, float probe_radius, bool keep, StreamOutput* stream);
@@ -29,6 +30,7 @@ private:
     std::tuple<float, float, float> inverseTranform(float motor_a, float motor_b, float motor_c);
         
     float probe_radius;
+    float initial_height;
     int sample_count;
     int factors;
 };

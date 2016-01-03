@@ -23,6 +23,7 @@
 #define sample_count_checksum CHECKSUM("sample_count")
 #define factors_checksum CHECKSUM("factors")
 #define radius_checksum       CHECKSUM("radius")
+#define initial_height_checksum CHECKSUM("initial_height")
 
 // deprecated
 #define probe_radius_checksum CHECKSUM("probe_radius")
@@ -40,6 +41,10 @@ bool DCDeltaCalibrationStrategy::handleConfig()
     this->sample_count = THEKERNEL->config->value(leveling_strategy_checksum, dc_delta_calibration_strategy_checksum, sample_count_checksum)->by_default(13)->as_number();
 
     this->factors = THEKERNEL->config->value(leveling_strategy_checksum, dc_delta_calibration_strategy_checksum, factors_checksum)->by_default(6)->as_number();
+    
+    // the initial height above the bed we stop the intial move down after home to find the bed
+    // this should be a height that is enough that the probe will not hit the bed and is an offset from max_z (can be set to 0 if max_z takes into account the probe offset)
+    this->initial_height= THEKERNEL->config->value(leveling_strategy_checksum, dc_delta_calibration_strategy_checksum, initial_height_checksum)->by_default(10)->as_number();
     
     return true;
 }
@@ -362,6 +367,22 @@ bool DCDeltaCalibrationStrategy::calibrate(int num_factors, int sample_count, fl
     return true;
 }
 
+float DCDeltaCalibrationStrategy::findBed()
+{
+    // home
+    zprobe->home();
+    
+    // move to an initial position fast so as to not take all day, we move down max_z - initial_height, which is set in config, default 10mm
+    float deltaz= zprobe->getMaxZ() - initial_height;
+    zprobe->coordinated_move(NAN, NAN, -deltaz, zprobe->getFastFeedrate(), true);
+    
+    // find bed, run at slow rate so as to not hit bed hard
+    int s;
+    if(!zprobe->run_probe(s, false)) return NAN;
+    
+    return zprobe->zsteps_to_mm(s) + deltaz - zprobe->getProbeHeight(); // distance to move from home to 5mm above bed
+}
+
 bool DCDeltaCalibrationStrategy::set_trim(float x, float y, float z, StreamOutput *stream)
 {
     float t[3] {x, y, z};
@@ -392,14 +413,16 @@ bool DCDeltaCalibrationStrategy::get_trim(float &x, float &y, float &z)
 }
 
 bool DCDeltaCalibrationStrategy::probe_bed(int sample_count, float probe_radius, std::vector<float> probe_heights, StreamOutput* stream) {
-    zprobe->home();
-
-    // find bed, run at fast rate
     int s;
-    if (!zprobe->run_probe(s, true)) return false;
+    float bedht = findBed();
+    if (isnan(bedht)) return false;
+    stream->printf("Initial Bed height is %.4f mm\n", bedht);
 
-    float bedht = zprobe->zsteps_to_mm(s) - zprobe->getProbeHeight(); // distance to move from home to 5mm above bed
-    stream->printf("Bed ht is %f mm\n", bedht);
+    // // find bed, run at fast rate
+    // if (!zprobe->run_probe(s, true)) return false;
+
+    // float bedht = zprobe->zsteps_to_mm(s) - zprobe->getProbeHeight(); // distance to move from home to 5mm above bed
+    // stream->printf("Bed ht is %f mm\n", bedht);
 
     // move to start position
     zprobe->home();
@@ -410,6 +433,7 @@ bool DCDeltaCalibrationStrategy::probe_bed(int sample_count, float probe_radius,
         get_probe_point(i, cartesian_mm, sample_count, probe_radius);
         if (!zprobe->doProbeAt(s, cartesian_mm[0], cartesian_mm[1])) return false;
         probe_heights[i] = zprobe->zsteps_to_mm(s) - zprobe->getProbeHeight();
+        THEKERNEL->call_event(ON_IDLE);
     }
     
     return true;
